@@ -186,6 +186,7 @@ Both tiers run through one runner configuration, `tests/test.config.ts`, read by
 | `npm run test:integration` | `integration` (`tests/integration`) | Live; concurrency pinned to `1`, because the files share on-chain state. Validates `.env.phase2` up front on entry, failing fast with a single actionable message before launching test files if missing or incomplete. |
 | `npm run test:all` | every project, one run | Both suites in a single invocation. |
 | `npm run test:coverage` | every project, one run, coverage | Node's `--experimental-test-coverage`; needs `.env.phase2`, because the integration project is included. |
+| `npm run test:coverage:floor` | `unit` (`tests/unit`) | Offline, no secret: `c8` with a **per-file** floor on the verdict-critical path (`src/preflight.ts`, `src/policy.ts`, `src/invoke.ts`), thresholds in [`.c8rc.json`](.c8rc.json). This is the coverage gate `ci` runs. |
 
 Both projects share the `tsx` transform, so the same `src/` modules load
 identically in either tier. A project's invariants — its directory has matching
@@ -226,6 +227,36 @@ code or the SDK beneath them changes:
   after touching `src/telemetry.ts` or `src/invoke.ts`, or after upgrading
   `@stellar/stellar-sdk`. Provenance and capture details:
   `tests/fixtures/rpc/README.md`.
+
+## Coverage
+
+Two coverage commands, two tools, and the difference matters:
+
+- `npm run test:coverage` — the whole-project report from the test-tier table
+  above: Node's built-in `--experimental-test-coverage` over every project in one
+  run. Needs `.env.phase2`, because the live project is included.
+- `npm run test:coverage:floor` — `c8` over the unit suite only: offline, no
+  secret, no network. `c8` understands the `tsx` loader and maps its numbers
+  back to the TypeScript source, and it reads [`.c8rc.json`](.c8rc.json), so the
+  floor lives in one place rather than in the workflow. This is the coverage
+  gate `ci` runs.
+
+The floor applies **per file** to the three verdict-critical modules —
+`src/preflight.ts`, `src/policy.ts`, `src/invoke.ts` — and starts at the
+measured baseline for those files (line 90 / branch 71 / function 92, measured
+2026-09-29), so it is honest rather than aspirational: it fails only on a real
+regression.
+
+**Ratchet rule:** raise the floor only in a deliberate PR that raises the tests
+first — measure the new number (`npm run test:coverage:floor`), then bump the
+matching key in `.c8rc.json` and state the old and new numbers in the PR. Never
+lower a threshold to make a red build green; that is the one change the floor
+exists to prevent.
+
+Sequencing: the test-tier docs issue had already landed when the floor was
+added, so the floor command is documented in the test-tier table above. This
+subsection stays, because it carries the floor mechanics and the ratchet rule
+that the table cannot hold.
 
 ## Secrets
 
